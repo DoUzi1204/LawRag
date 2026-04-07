@@ -1,0 +1,230 @@
+# 🏛️ LawRAG — Flow Hoạt Động Toàn Hệ Thống
+
+## Tổng quan kiến trúc
+
+Dự án **LawRAG** là hệ thống hỏi đáp pháp luật Việt Nam dựa trên RAG (Retrieval-Augmented Generation), gồm 3 giai đoạn chính:
+
+```mermaid
+flowchart LR
+    A["🕷️ GIAI ĐOẠN 1\nThu thập dữ liệu\nlaw_crawler"] --> B["⚙️ GIAI ĐOẠN 2\nXử lý & Indexing\npreprocess"]
+    B --> C["🖥️ GIAI ĐOẠN 3\nHệ thống hoạt động\nbackend + frontend"]
+```
+
+---
+
+## 📌 GIAI ĐOẠN 1 — Thu thập dữ liệu (`law_crawler/`)
+
+```mermaid
+flowchart TD
+    A["🌐 vbpl.vn\nCổng thông tin pháp luật quốc gia"] -->|"Crawler (law_crawler/main.py)"| B["📄 File JSON thô\n{Id, Content}"]
+    B --> C["📁 law_crawler/vbpl_documents/\n├── Luật/\n│   └── 11716_Luật 36_2009_QH12.json\n├── Nghị định/\n├── Thông tư/\n└── ..."]
+```
+
+**Cấu trúc file JSON:**
+```json
+{
+  "Id": "11716",
+  "Content": "LUẬT\nGiao thông đường bộ\nChương I..."
+}
+```
+
+---
+
+## ⚙️ GIAI ĐOẠN 2 — Tiền xử lý & Indexing (`preprocess/`)
+
+```mermaid
+flowchart TD
+    A["📁 vbpl_documents/*.json"] --> B
+
+    subgraph CHUNK["VietLegalChunker (chunker.py)"]
+        B["📖 Đọc file JSON"] --> C["🔍 Parse cấu trúc phân cấp"]
+        C --> D["Phần → Chương → Mục → Điều"]
+        D --> E{"Token count\n≤ 512?"}
+        E -->|Yes| F["✅ 1 chunk = 1 Điều"]
+        E -->|No| G["✂️ RecursiveCharacterTextSplitter\nchia nhỏ thêm"]
+    end
+
+    F --> H["📋 LangChain Document\npage_content + metadata"]
+    G --> H
+
+    H --> I["🧠 Embedding Model\nchunk_pipeline.py"]
+
+    subgraph EMBED["Embedding (ingest_data_vietnamese.py)"]
+        I --> J["AITeamVN/Vietnamese_Embedding_v2\n(BGE-M3 fine-tuned)"]
+        J --> K["Dense Vector\n1024-dim"]
+        J --> L["Sparse Vector\nSPLADE-style weights"]
+    end
+
+    K --> M["🗄️ Qdrant Vector DB\nlocalhost:6333"]
+    L --> M
+```
+
+**Metadata mỗi chunk:**
+| Field | Ví dụ |
+|---|---|
+| `document_id` | `"11716"` |
+| [document_type](file:///d:/LawRAG/preprocess/chunker.py#197-201) | `"Luật"` |
+| `document_title` | `"Luật Giao thông đường bộ"` |
+| `chuong` | `"CHƯƠNG II"` |
+| `muc` | `"Mục 1"` |
+| `dieu` | `"Điều 5"` |
+
+---
+
+## 🖥️ GIAI ĐOẠN 3 — Hệ thống hoạt động (Runtime)
+
+### 3.1 Kiến trúc tổng thể
+
+```mermaid
+flowchart LR
+    U["👤 Người dùng"] <-->|"HTTP"| FE
+
+    subgraph FE["Frontend (React + Vite)\nlocalhost:5173"]
+        P1["💬 Chat Page"]
+        P2["📚 Lookup Page\nTra cứu văn bản"]
+    end
+
+    FE <-->|"REST API\n/api/v1/*"| BE
+
+    subgraph BE["Backend (FastAPI)\nlocalhost:8000"]
+        R1["POST /chat/message"]
+        R2["GET /lookup/documents"]
+        R3["POST /auth/login"]
+        R4["GET /sessions"]
+    end
+
+    BE <-->|"Query"| QD["🗄️ Qdrant\nlocalhost:6333"]
+    BE <-->|"API Key"| GM["🤖 Gemini API\ngoogle"]
+    BE <-->|"JWT/Sessions"| DB["💾 SQLite\nlaw.db"]
+```
+
+### 3.2 Flow xử lý câu hỏi — Agentic RAG Pipeline
+
+```mermaid
+flowchart TD
+    START(["👤 User gửi câu hỏi"]) --> A
+
+    subgraph LANGGRAPH["🔗 LangGraph Workflow (agentic_rag_pipeline.py)"]
+        A["🔀 route_query\nGemini phân loại:\ncần tìm luật hay không?"]
+        
+        A -->|"needs_retrieval = YES"| B["🔍 retrieve\nQdrant search\nVietnamese Embedding"]
+        A -->|"needs_retrieval = NO\n(chào hỏi, ngoài luật)"| GD["💬 generate_direct\nGemini trả lời thẳng"]
+        
+        B --> C["📊 grade_documents\nGemini đánh giá\nmức độ liên quan"]
+        
+        C -->|"Có docs liên quan"| GC["📝 generate_with_context\nGemini sinh câu trả lời\nvới context"]
+        C -->|"Không có docs liên quan\n& rewrite_count < 3"| RW["✏️ rewrite_query\nGemini viết lại câu hỏi\nthêm thuật ngữ pháp lý"]
+        C -->|"Không có docs\n& đã retry 3 lần"| ND["❌ handle_no_docs\nThông báo không tìm thấy"]
+        
+        RW -->|"Thử lại"| B
+    end
+
+    GD --> END(["📤 Trả về {answer, sources}"])
+    GC --> END
+    ND --> END
+```
+
+### 3.3 Chi tiết từng node
+
+| Node | Mô tả | Input | Output |
+|------|--------|-------|--------|
+| [route_query](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#265-306) | Gemini quyết định có cần tìm kiếm pháp luật không | câu hỏi | `needs_retrieval: bool` |
+| [retrieve](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#307-335) | Tìm trong Qdrant bằng embedding, tùy chọn rerank | query | danh sách docs |
+| [grade_documents](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#336-396) | Gemini chấm từng doc: liên quan hay không | query + docs | docs liên quan |
+| [rewrite_query](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#397-443) | Gemini viết lại với thuật ngữ pháp lý đặc thù | query hiện tại | query mới |
+| [generate_with_context](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#444-462) | Gemini sinh câu trả lời từ docs liên quan | query + context | câu trả lời |
+| [generate_direct](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#463-496) | Gemini trả lời thẳng không qua retrieval | query | câu trả lời |
+| [handle_no_docs](file:///d:/LawRAG/backend/services/pipelines/agentic_rag_pipeline.py#497-537) | Báo không tìm thấy, gợi ý cách hỏi lại | query | thông báo |
+
+### 3.4 Retrieval — Embedding & Qdrant
+
+```mermaid
+flowchart LR
+    Q["❓ Query"] --> ENC["AITeamVN/Vietnamese_Embedding_v2\n(BGE-M3 fine-tuned)"]
+    ENC --> DV["Dense Vector"]
+    ENC --> SV["Sparse Vector (SPLADE)"]
+
+    DV --> QD["🗄️ Qdrant"]
+    SV --> QD
+
+    QD -->|"Hybrid / Dense / Sparse"| RES["Top-K docs"]
+    RES --> RR{"Reranker\nbật?"}
+    RR -->|"Yes"| CR["CrossEncoder Reranker\nms-marco model"]
+    RR -->|"No"| TOPK["Top-K docs"]
+    CR --> TOPK
+```
+
+### 3.5 API Endpoints
+
+| Endpoint | Method | Chức năng |
+|----------|--------|-----------|
+| `/api/v1/auth/register` | POST | Đăng ký tài khoản |
+| `/api/v1/auth/login` | POST | Đăng nhập, nhận JWT |
+| `/api/v1/auth/me` | GET | Thông tin user hiện tại |
+| `/api/v1/sessions` | GET/POST | Quản lý phiên chat |
+| `/api/v1/chat/message` | POST | Gửi câu hỏi, nhận trả lời |
+| `/api/v1/lookup/documents` | GET | Danh sách văn bản pháp luật |
+| `/api/v1/lookup/documents/{id}` | GET | Chi tiết một văn bản |
+| `/api/v1/lookup/search` | GET | Tìm kiếm văn bản |
+| `/healthz` | GET | Health check |
+
+---
+
+## 🗂️ Cấu trúc thư mục tổng quan
+
+```
+LawRAG/
+├── law_crawler/          # Thu thập dữ liệu từ vbpl.vn
+│   ├── main.py           # Crawler script
+│   └── vbpl_documents/   # Dữ liệu JSON thô
+│
+├── preprocess/           # Xử lý & đưa vào Qdrant
+│   ├── chunker.py        # VietLegalChunker
+│   ├── chunk_pipeline.py # Pipeline tạo chunks
+│   └── ingest_data_vietnamese.py  # Đẩy vào Qdrant
+│
+├── backend/              # FastAPI server
+│   ├── main.py           # Entry point, route registration
+│   ├── api/v1/           # REST endpoints (chat, lookup, auth, sessions)
+│   ├── services/
+│   │   ├── pipelines/    # RAG pipelines (Agentic, GTE, BGE-M3, Vietnamese)
+│   │   ├── rerankers/    # CrossEncoder reranker
+│   │   ├── adapters.py   # Embedding adapters (Dense/Sparse)
+│   │   ├── chat_service.py      # Quản lý session + pipeline
+│   │   ├── lookup_service.py    # Tra cứu văn bản từ file
+│   │   ├── auth_service.py      # JWT authentication
+│   │   └── session_service.py   # Lưu lịch sử chat vào DB
+│   ├── core/
+│   │   ├── config.py     # Cấu hình toàn hệ thống
+│   │   ├── database.py   # SQLite setup
+│   │   └── security.py   # JWT, password hashing
+│   └── models/           # SQLAlchemy models
+│
+├── frontend/             # React + Vite + TypeScript
+│   └── src/
+│       ├── pages/        # Chat, Lookup, Login pages
+│       ├── components/   # UI components
+│       ├── services/     # API client
+│       └── contexts/     # Auth context
+│
+├── qdrant_data/          # Qdrant vector DB data (local)
+├── docker-compose.yaml   # Orchestration (backend + frontend + qdrant)
+└── benchmarks/           # Evaluation scripts
+```
+
+---
+
+## 🐳 Triển khai với Docker Compose
+
+```mermaid
+flowchart LR
+    U["👤 User"] -->|":5173"| FE["Frontend\nReact Container"]
+    FE -->|":8000"| BE["Backend\nFastAPI Container"]
+    BE -->|":6333"| QD["Qdrant\nVector DB Container"]
+```
+
+> [!TIP]
+> Câu lệnh khởi chạy toàn bộ hệ thống: `docker-compose up`
+
+> [!NOTE]
+> Pipeline mặc định đang dùng là **AgenticRAGPipeline** với embedding model **AITeamVN/Vietnamese_Embedding_v2** (BGE-M3 fine-tuned cho tiếng Việt), chế độ **dense retrieval**, không bật reranker mặc định.

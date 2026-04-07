@@ -1,0 +1,156 @@
+# 🚀 Plan Tích Hợp Cloudflare Workers AI vào LawRAG
+
+## Tổng Quan
+
+Dự án LawRAG hiện sử dụng pattern **LLM Factory** ([llm_factory.py](file:///d:/LawRAG/backend/services/llm_factory.py)) để tạo LLM dựa trên biến `LLM_PROVIDER`. Việc tích hợp Cloudflare Workers AI chỉ cần **thêm 1 provider mới** vào factory này mà không ảnh hưởng đến code hiện tại.
+
+> [!IMPORTANT]
+> Kiến trúc hiện tại đã được thiết kế theo pattern Strategy/Factory, nên việc thêm provider mới rất đơn giản và không cần sửa pipeline.
+
+---
+
+## Kiến Trúc Hiện Tại
+
+```mermaid
+graph TD
+    A[config.py<br/>LLM_PROVIDER] --> B[llm_factory.py<br/>create_chat_model]
+    B --> C{Provider?}
+    C -->|google/gemini| D[ChatGoogleGenerativeAI<br/>gemini-2.5-flash-lite]
+    C -->|ollama| E[ChatOllama<br/>qwen2.5:3b]
+    C -->|huggingface_local| F[ChatHuggingFace<br/>Qwen2.5-3B-Instruct]
+    C -->|cloudflare ✨ NEW| G[ChatOpenAI compatible<br/>Cloudflare Workers AI]
+    
+    D --> H[AgenticRAGPipeline]
+    E --> H
+    F --> H
+    G --> H
+```
+
+---
+
+## Các Bước Thực Hiện
+
+### Bước 1: Thêm Config cho Cloudflare
+
+> [!NOTE]
+> Cloudflare Workers AI expose API tương thích OpenAI, nên ta cần `base_url`, `api_key`, và `model_name`.
+
+**File:** [backend/core/config.py](file:///d:/LawRAG/backend/core/config.py)
+
+```diff
+  OLLAMA_MODEL: str = "qwen2.5:3b"
+  LOCAL_LLM_MODEL_ID: str = "Qwen/Qwen2.5-3B-Instruct"
+  LOCAL_LLM_MAX_NEW_TOKENS: int = 512
++ # Cloudflare Workers AI Settings
++ CLOUDFLARE_API_KEY: str = ""
++ CLOUDFLARE_BASE_URL: str = ""        # e.g., https://your-worker.your-subdomain.workers.dev/v1
++ CLOUDFLARE_MODEL: str = ""           # model name tùy vào model bạn host
+```
+
+### Bước 2: Thêm Provider trong LLM Factory
+
+**File:** [backend/services/llm_factory.py](file:///d:/LawRAG/backend/services/llm_factory.py)
+
+```diff
+  def create_chat_model() -> Any:
+      """Create a chat-compatible LLM based on config.LLM_PROVIDER."""
+      provider = (config.LLM_PROVIDER or "google").strip().lower()
+  
++     if provider in {"cloudflare", "cf", "cloudflare_workers"}:
++         from langchain_openai import ChatOpenAI
++
++         if not config.CLOUDFLARE_BASE_URL:
++             raise ValueError(
++                 "CLOUDFLARE_BASE_URL is empty. "
++                 "Set CLOUDFLARE_BASE_URL to your Workers AI endpoint."
++             )
++
++         return ChatOpenAI(
++             model=config.CLOUDFLARE_MODEL,
++             api_key=config.CLOUDFLARE_API_KEY,
++             base_url=config.CLOUDFLARE_BASE_URL,
++             temperature=config.LLM_TEMPERATURE,
++         )
++
+      if provider in {"ollama", "local_ollama"}:
+          ...
+```
+
+> [!TIP]
+> Cloudflare Workers AI hỗ trợ **OpenAI-compatible API**. Do đó ta dùng `ChatOpenAI` từ `langchain_openai` với `base_url` trỏ tới endpoint Cloudflare của bạn. Không cần package đặc biệt nào.
+
+### Bước 3: Cài đặt Dependency
+
+**File:** [backend/requirements.txt](file:///d:/LawRAG/backend/requirements.txt)
+
+```diff
++ langchain-openai>=0.1.0
+```
+
+> [!NOTE]
+> Nếu `langchain-openai` đã có trong requirements.txt thì bỏ qua bước này.
+
+### Bước 4: Cấu hình Environment Variables
+
+**File `.env` hoặc [docker-compose.yaml](file:///d:/LawRAG/docker-compose.yaml):**
+
+```diff
+  environment:
+    - GEMINI_API_KEY=${GEMINI_API_KEY}
+-   - LLM_PROVIDER=google
++   - LLM_PROVIDER=cloudflare
++   - CLOUDFLARE_API_KEY=${CLOUDFLARE_API_KEY}
++   - CLOUDFLARE_BASE_URL=${CLOUDFLARE_BASE_URL}
++   - CLOUDFLARE_MODEL=${CLOUDFLARE_MODEL}
+    - DOCS_ROOT=/law_crawler/vbpl_documents
+```
+
+Hoặc tạo file `.env` ở root:
+
+```env
+LLM_PROVIDER=cloudflare
+CLOUDFLARE_API_KEY=your-api-key-here
+CLOUDFLARE_BASE_URL=https://your-worker.your-subdomain.workers.dev/v1
+CLOUDFLARE_MODEL=your-model-name
+```
+
+### Bước 5: Xác Nhận & Test
+
+```bash
+# 1. Khởi động backend
+cd backend
+python main.py
+
+# 2. Test endpoint health
+curl http://localhost:8000/healthz
+
+# 3. Test chat endpoint
+curl -X POST http://localhost:8000/api/v1/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Xin chào, luật giao thông quy định gì về tốc độ?"}'
+```
+
+---
+
+## Tóm Tắt Các File Cần Sửa
+
+| # | File | Thay đổi | Độ phức tạp |
+|---|---|---|---|
+| 1 | [config.py](file:///d:/LawRAG/backend/core/config.py) | Thêm 3 biến config Cloudflare | ⭐ Thấp |
+| 2 | [llm_factory.py](file:///d:/LawRAG/backend/services/llm_factory.py) | Thêm 1 block `if` cho provider mới | ⭐ Thấp |
+| 3 | [requirements.txt](file:///d:/LawRAG/backend/requirements.txt) | Thêm `langchain-openai` (nếu chưa có) | ⭐ Thấp |
+| 4 | `.env` hoặc [docker-compose.yaml](file:///d:/LawRAG/docker-compose.yaml) | Set biến môi trường | ⭐ Thấp |
+
+> [!CAUTION]
+> **Không cần sửa bất kỳ pipeline nào** (AgenticRAGPipeline, VietnameseEmbeddingPipeline, v.v.) vì tất cả đều nhận LLM thông qua [create_chat_model()](file:///d:/LawRAG/backend/services/llm_factory.py#10-76) factory.
+
+---
+
+## Câu Hỏi Cần Xác Nhận Từ Bạn
+
+Trước khi bắt tay vào code, tôi cần biết:
+
+1. **URL endpoint** của Worker Cloudflare của bạn là gì? (ví dụ: `https://my-ai.myname.workers.dev/v1`)
+2. **API Key** (nếu có) - bạn có set authentication cho Worker không?
+3. **Tên model** bạn đang host trên Cloudflare là gì?
+4. **API format** - Worker của bạn có expose API tương thích OpenAI (`/v1/chat/completions`) không? Hay dùng format khác?
