@@ -10,13 +10,13 @@ This pipeline uses LangGraph to implement a sophisticated workflow that:
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, TypedDict
 
 from langchain_core.documents import Document
 from langchain_core.messages import BaseMessage
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_openai import ChatOpenAI
 from langchain_qdrant import QdrantVectorStore, RetrievalMode
 from langgraph.graph import END, StateGraph
 from qdrant_client import QdrantClient
@@ -94,7 +94,8 @@ class AgenticRAGPipeline(RAGPipeline):
     ) -> None:
         """Initialize the pipeline."""
         self.vector_store: Optional[QdrantVectorStore] = None
-        self.model: Optional[ChatOpenAI] = None
+        self.utility_model = None   # Fast model for routing, grading, rewriting
+        self.generator_model = None  # Powerful model for final answer generation
         self.base_retriever = None
         self.reranker: Optional[BaseReranker] = reranker
         self._initialized = False
@@ -136,12 +137,33 @@ class AgenticRAGPipeline(RAGPipeline):
                 f"Must be one of: {list(_RETRIEVAL_MODE_MAP.keys())}"
             )
 
-        # 1. Initialize GPT-5 LLM via Orimise (OpenAI-compatible)
-        self.model = ChatOpenAI(
+        # 1. Initialize LLMs — Dual-model tiering
+        #    Utility model: Cloudflare Workers AI (fast ~3B MoE) for routing, grading, rewriting
+        #    Generator model: Orimise (gemini-3.1-pro) for high-quality final answer generation
+        from services.llm.cloudflare_worker import ChatCloudflareWorker
+        from langchain_openai import ChatOpenAI
+
+        if not config.CLOUDFLARE_BASE_URL:
+            raise ValueError(
+                "CLOUDFLARE_BASE_URL is empty. "
+                "Set CLOUDFLARE_BASE_URL to your Cloudflare Workers AI endpoint."
+            )
+
+        self.utility_model = ChatCloudflareWorker(
+            base_url=config.CLOUDFLARE_BASE_URL,
+            api_key=config.CLOUDFLARE_API_KEY,
+            model_name=config.CLOUDFLARE_UTILITY_MODEL,
+            temperature=config.LLM_TEMPERATURE,
+        )
+        self.generator_model = ChatOpenAI(
             model=config.ORIMISE_MODEL,
             api_key=config.ORIMISE_API_KEY,
             base_url=config.ORIMISE_BASE_URL,
             temperature=config.LLM_TEMPERATURE,
+        )
+        logger.info(
+            f"LLM initialized — utility: {config.CLOUDFLARE_UTILITY_MODEL} (Cloudflare), "
+            f"generator: {config.ORIMISE_MODEL} (Orimise)"
         )
 
         # 2. Initialize Vietnamese Embedding
@@ -163,7 +185,7 @@ class AgenticRAGPipeline(RAGPipeline):
 
         # 3. Initialize Qdrant Vector Store
         try:
-            client = QdrantClient(host=qdrant_host, port=qdrant_port)
+            client = QdrantClient(host=qdrant_host, port=qdrant_port, timeout=30)
             self.vector_store = QdrantVectorStore(
                 client=client,
                 collection_name=collection_name,
@@ -292,7 +314,7 @@ You must respond with ONLY "yes" or "no", nothing else.""",
             ]
         )
 
-        chain = route_prompt | self.model | StrOutputParser()
+        chain = route_prompt | self.utility_model | StrOutputParser()
 
         try:
             result = chain.invoke({"query": query}).strip().lower()
@@ -335,10 +357,17 @@ You must respond with ONLY "yes" or "no", nothing else.""",
         return {"documents": docs}
 
     def _grade_documents_node(self, state: AgenticState) -> Dict[str, Any]:
-        """Grade the relevance of retrieved documents."""
+        """Grade the relevance of retrieved documents in parallel.
+
+        Each document is graded by an independent LLM call. Since these calls
+        are I/O-bound and mutually independent, they are dispatched concurrently
+        via ThreadPoolExecutor to avoid N×latency from sequential execution.
+        """
         query = state["query"]
         documents = state["documents"]
-        logger.info(f"[Grade] Evaluating {len(documents)} documents for relevance")
+        logger.info(
+            f"[Grade] Evaluating {len(documents)} documents in parallel"
+        )
 
         if not documents:
             logger.info("[Grade] No documents to grade")
@@ -366,31 +395,46 @@ You must respond with ONLY "yes" or "no", nothing else.""",
             ]
         )
 
-        chain = grade_prompt | self.model | StrOutputParser()
+        chain = grade_prompt | self.utility_model | StrOutputParser()
 
-        relevant_docs = []
-        for i, doc in enumerate(documents):
+        def _grade_one(index_doc: tuple) -> tuple:
+            """Grade a single document. Returns (original_index, doc, is_relevant)."""
+            i, doc = index_doc
             try:
-                # Truncate document content to avoid token limits
                 doc_content = doc.page_content[:2000]
                 result = (
                     chain.invoke({"query": query, "document": doc_content})
                     .strip()
                     .lower()
                 )
-
                 is_relevant = result == "yes"
                 logger.debug(f"[Grade] Document {i + 1}: relevant={is_relevant}")
-
-                if is_relevant:
-                    relevant_docs.append(doc)
+                return (i, doc, is_relevant)
             except Exception as e:
                 logger.error(f"[Grade] Error grading document {i + 1}: {e}")
                 # Include document on error to avoid losing potentially relevant content
-                relevant_docs.append(doc)
+                return (i, doc, True)
 
+        t_grade_start = time.time()
+
+        # Fan-out: submit all grading tasks concurrently
+        with ThreadPoolExecutor(max_workers=len(documents)) as executor:
+            futures = {
+                executor.submit(_grade_one, (i, doc)): i
+                for i, doc in enumerate(documents)
+            }
+            raw_results: list[tuple] = [
+                future.result() for future in as_completed(futures)
+            ]
+
+        # Re-sort by original index to preserve retrieval rank order
+        raw_results.sort(key=lambda x: x[0])
+        relevant_docs = [doc for _, doc, is_relevant in raw_results if is_relevant]
+
+        t_grade_elapsed = time.time() - t_grade_start
         logger.info(
-            f"[Grade] {len(relevant_docs)}/{len(documents)} documents marked as relevant"
+            f"[Grade] {len(relevant_docs)}/{len(documents)} documents relevant "
+            f"(parallel grading took {t_grade_elapsed:.4f}s)"
         )
 
         return {"relevant_documents": relevant_docs}
@@ -428,7 +472,7 @@ Respond with ONLY the rewritten query in Vietnamese, nothing else.""",
             ]
         )
 
-        chain = rewrite_prompt | self.model | StrOutputParser()
+        chain = rewrite_prompt | self.utility_model | StrOutputParser()
 
         try:
             new_query = chain.invoke(
@@ -485,7 +529,7 @@ specialize in Vietnamese law and suggest they ask a related question.""",
             ]
         )
 
-        chain = direct_prompt | self.model | StrOutputParser()
+        chain = direct_prompt | self.utility_model | StrOutputParser()
 
         try:
             answer = chain.invoke({"query": query, "history": history})
@@ -522,7 +566,7 @@ Respond in Vietnamese in a professional and helpful manner.""",
             ]
         )
 
-        chain = no_docs_prompt | self.model | StrOutputParser()
+        chain = no_docs_prompt | self.utility_model | StrOutputParser()
 
         try:
             answer = chain.invoke({"query": query})
@@ -568,7 +612,7 @@ Respond in Vietnamese in a professional and helpful manner.""",
         context_text: str,
         history: Optional[List[BaseMessage]] = None,
     ) -> str:
-        """Generate response using GPT-5 LLM with context."""
+        """Generate response using the powerful generator model with context."""
         t_start = time.time()
 
         system_template = """You are a legal expert specializing in Vietnamese law, with in-depth knowledge of legal
@@ -594,7 +638,7 @@ CONTEXT:
             ]
         )
 
-        chain = prompt_template | self.model | StrOutputParser()
+        chain = prompt_template | self.generator_model | StrOutputParser()
 
         try:
             history_messages = history if history else []

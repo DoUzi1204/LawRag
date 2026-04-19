@@ -19,8 +19,11 @@ class Config(BaseSettings):
     LOCAL_LLM_MAX_NEW_TOKENS: int = 512
     # Cloudflare Workers AI Settings
     CLOUDFLARE_API_KEY: str = ""
-    CLOUDFLARE_BASE_URL: str = ""  # e.g., https://lawrag.douzi122004.workers.dev/v1
+    CLOUDFLARE_BASE_URL: str = ""  # e.g., https://lawrag.douzi122004.workers.dev
     CLOUDFLARE_MODEL: str = "@cf/qwen/qwen3-30b-a3b-fp8"
+    # Model Tiering: fast utility model for routing/grading, powerful model for generation
+    CLOUDFLARE_UTILITY_MODEL: str = "@cf/qwen/qwen3-30b-a3b-fp8"
+    CLOUDFLARE_GENERATOR_MODEL: str = "alibaba/qwen3.5-397b-a17b"
     # Orimise (OpenAI-compatible) Settings
     ORIMISE_API_KEY: str = ""
     ORIMISE_BASE_URL: str = "https://api.orimise.com/v1"

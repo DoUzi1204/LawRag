@@ -79,6 +79,8 @@ class ChatCloudflareWorker(BaseChatModel):
 
         # ── Build request ─────────────────────────────────────────────────
         body: dict = {"prompt": prompt}
+        if self.model_name:
+            body["model"] = self.model_name
         if system_prompt:
             body["systemPrompt"] = system_prompt
         if history:
