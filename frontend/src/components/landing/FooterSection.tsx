@@ -28,8 +28,8 @@ const FooterSection: React.FC = () => {
     {
       icon: <Mail className="w-5 h-5" />,
       label: "Email",
-      value: "support@dodogiaothong.com",
-      href: "mailto:support@dodogiaothong.com",
+      value: "support@vietlaw.com",
+      href: "mailto:support@vietlaw.com",
     },
     {
       icon: <MapPin className="w-5 h-5" />,
@@ -52,12 +52,10 @@ const FooterSection: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
           {/* Company Info */}
           <div className="space-y-6">
-            <div className="text-2xl font-bold text-white">
-              Đô Đô Giao Thông
-            </div>
+            <div className="text-2xl font-bold text-white">Viet Law</div>
             <p className="text-gray-400 text-sm leading-relaxed">
-              Nền tảng AI thông minh giúp bạn tra cứu luật giao thông một cách
-              nhanh chóng và chính xác, 24/7.
+              Nền tảng AI thông minh giúp bạn tra cứu pháp luật Việt Nam một
+              cách nhanh chóng và chính xác, 24/7.
             </p>
             <div className="flex items-center gap-3">
               {socialLinks.map((social, index) => (
@@ -139,7 +137,7 @@ const FooterSection: React.FC = () => {
       <div className="page-container py-8">
         <div className="flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-gray-400 text-sm">
-            © {currentYear} Đô Đô Giao Thông. Tất cả các quyền được bảo lưu.
+            © {currentYear} Viet Law. Tất cả các quyền được bảo lưu.
           </p>
           <div className="flex items-center gap-6 text-sm">
             <a

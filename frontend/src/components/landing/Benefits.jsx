@@ -101,8 +101,7 @@ const Benefits = () => {
         {/* Tiêu đề */}
         <div className="text-center mb-20">
           <h2 className="text-4xl font-bold text-gray-900">
-            Lý Do Nên Chọn{" "}
-            <span className="text-blue-600">Đô Đô Giao Thông</span>
+            Lý Do Nên Chọn <span className="text-blue-600">Viet Law</span>
           </h2>
         </div>
 

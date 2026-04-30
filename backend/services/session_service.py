@@ -55,6 +55,7 @@ class SessionService:
     ) -> List[ChatSession]:
         """
         Get all sessions for a user, ordered by updated_at desc.
+        Only returns sessions that have at least one message.
 
         Args:
             db: Database session
@@ -67,7 +68,10 @@ class SessionService:
         """
         return (
             db.query(ChatSession)
-            .filter(ChatSession.user_id == user_id)
+            .filter(
+                ChatSession.user_id == user_id,
+                ChatSession.messages.any(),
+            )
             .order_by(ChatSession.updated_at.desc())
             .offset(skip)
             .limit(limit)
@@ -75,8 +79,15 @@ class SessionService:
         )
 
     def count_sessions(self, db: Session, user_id: int) -> int:
-        """Count total sessions for a user."""
-        return db.query(ChatSession).filter(ChatSession.user_id == user_id).count()
+        """Count total sessions for a user (only those with messages)."""
+        return (
+            db.query(ChatSession)
+            .filter(
+                ChatSession.user_id == user_id,
+                ChatSession.messages.any(),
+            )
+            .count()
+        )
 
     def get_session(
         self,

@@ -3,7 +3,7 @@ import { useSearchParams, NavLink } from 'react-router-dom';
 import { Badge, Input, Button } from '../components/ui';
 import type { LawDocument, DocumentListResponse, TypesResponse } from '../types';
 import { API_BASE_URL } from '../services/api';
-import { useAuth } from '../contexts/AuthContext';
+
 
 const API_URL = API_BASE_URL;
 
@@ -72,8 +72,8 @@ const ContentSkeleton: React.FC = () => (
       <div className="h-6 bg-slate-100 rounded w-32"></div>
     </div>
     <div className="space-y-3">
-      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
-        <div key={i} className="h-4 bg-slate-100 rounded" style={{ width: `${Math.random() * 30 + 70}%` }}></div>
+      {[95, 82, 100, 74, 88, 91, 78, 96, 85, 70].map((w, i) => (
+        <div key={i} className="h-4 bg-slate-100 rounded" style={{ width: `${w}%` }}></div>
       ))}
     </div>
   </div>
@@ -91,7 +91,7 @@ const ErrorMessage: React.FC<{ message: string; onRetry?: () => void }> = ({ mes
     {onRetry && (
       <button
         onClick={onRetry}
-        className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+        className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
       >
         Thử lại
       </button>
@@ -103,7 +103,7 @@ const ErrorMessage: React.FC<{ message: string; onRetry?: () => void }> = ({ mes
 const BackToTopButton: React.FC<{ onClick: () => void; visible: boolean }> = ({ onClick, visible }) => (
   <button
     onClick={onClick}
-    className={`fixed bottom-6 right-6 w-10 h-10 bg-slate-900 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:bg-slate-800 hover:scale-110 z-50 ${
+    className={`fixed bottom-6 right-6 w-10 h-10 bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:bg-blue-700 hover:scale-110 z-50 ${
       visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4 pointer-events-none'
     }`}
     aria-label="Cuộn lên đầu"
@@ -118,14 +118,14 @@ const BackToTopButton: React.FC<{ onClick: () => void; visible: boolean }> = ({ 
 const ReadingProgress: React.FC<{ progress: number }> = ({ progress }) => (
   <div className="h-0.5 bg-slate-100 w-full">
     <div
-      className="h-full bg-slate-900 transition-all duration-150 ease-out"
+      className="h-full bg-blue-600 transition-all duration-150 ease-out"
       style={{ width: `${progress}%` }}
     />
   </div>
 );
 
 export const LookupPage: React.FC = () => {
-  const { user, logout } = useAuth();
+
   const [searchParams] = useSearchParams();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<LawDocument[]>([]);
@@ -304,7 +304,7 @@ export const LookupPage: React.FC = () => {
           </div>
           <div class="content">${content.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
           <div class="footer">
-            Xuất từ ViLeXa - ${new Date().toLocaleDateString('vi-VN')}
+            Xuất từ Viet Law - ${new Date().toLocaleDateString('vi-VN')}
           </div>
         </body>
         </html>
@@ -582,12 +582,19 @@ export const LookupPage: React.FC = () => {
       {/* Header */}
       <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-6 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="bg-slate-900 text-white px-2.5 py-1 rounded-lg text-sm font-bold tracking-wide">ViLeXa</span>
+          <div className="flex items-center gap-2">
+            <div className="flex items-center justify-center w-8 h-8 bg-blue-600 rounded-lg">
+              <svg className="w-4.5 h-4.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 8V4H8" /><rect width="16" height="12" x="4" y="8" rx="2" /><path d="M2 14h2" /><path d="M20 14h2" /><path d="M15 13v2" /><path d="M9 13v2" />
+              </svg>
+            </div>
+            <span className="text-lg font-bold text-blue-700">Viet Law</span>
+          </div>
         </div>
         <div className="flex items-center gap-4">
           <nav className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
             <NavLink
-              to="/"
+              to="/chat"
               className={({isActive}) =>
                 `px-4 py-1.5 text-sm rounded-md transition-all duration-200 ${
                   isActive
@@ -596,7 +603,7 @@ export const LookupPage: React.FC = () => {
                 }`
               }
             >
-              Chat
+              Trò chuyện
             </NavLink>
             <NavLink
               to="/lookup"
@@ -611,19 +618,6 @@ export const LookupPage: React.FC = () => {
               Tra cứu
             </NavLink>
           </nav>
-          {user && (
-            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-slate-700 to-slate-900 text-white flex items-center justify-center text-sm font-medium">
-                {user.username.charAt(0).toUpperCase()}
-              </div>
-              <button
-                onClick={logout}
-                className="text-sm text-slate-500 hover:text-slate-800 transition-colors"
-              >
-                Đăng xuất
-              </button>
-            </div>
-          )}
         </div>
       </header>
 
@@ -673,7 +667,7 @@ export const LookupPage: React.FC = () => {
                     disabled={isListLoading}
                     className={`px-2.5 py-1 text-xs rounded-full transition-all duration-200 disabled:opacity-50 ${
                       selectedType === tag
-                        ? 'bg-slate-900 text-white'
+                        ? 'bg-blue-600 text-white'
                         : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                     }`}
                   >
@@ -801,7 +795,7 @@ export const LookupPage: React.FC = () => {
                       {selectedDoc.title}
                     </h1>
                     <div className="flex flex-wrap items-center gap-2">
-                      <Badge className="bg-slate-900 text-white font-mono">{selectedDoc.ref}</Badge>
+                      <span className="inline-flex items-center rounded-full bg-blue-600 px-2.5 py-1 text-xs font-medium text-white font-mono">{selectedDoc.ref}</span>
                       <Badge className="bg-slate-100 text-slate-700">
                         {selectedDoc.date}
                       </Badge>

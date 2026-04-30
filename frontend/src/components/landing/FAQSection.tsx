@@ -13,45 +13,46 @@ const FAQSection: React.FC = () => {
   const faqs: FAQItem[] = [
     {
       id: 0,
-      question: "Lời khuyên từ chatbot AI Luật có đáng tin cậy không?",
+      question: "Lời khuyên từ chatbot AI pháp luật có đáng tin cậy không?",
       answer:
-        "Chatbot AI Luật vẫn đang trong giai đoạn phát triển và không ngừng cải tiến để ngày một hoàn thiện hơn. Do đó, độ tin cậy của nó cũng sẽ tăng dần theo thời gian. Người dùng hãy cần nhắc việc kiểm tra những thông tin quan trọng do chatbot AI tạo ra.",
+        "Chatbot AI pháp luật được xây dựa trên các văn bản pháp luật chính thức của Việt Nam và đang trong quá trình cải tiến liên tục. Tuy nhiên, đối với các vấn đề quan trọng, bạn nên kiểm tra lại thông tin hoặc tư vấn với chuyên gia.",
     },
     {
       id: 1,
-      question: "AI Luật có cải thiện sau khi triển khai không?",
+      question: "Chatbot có cập nhật và cải thiện thường xuyên không?",
       answer:
-        "Có, AI Luật được thiết kế để học hỏi liên tục từ các tương tác với người dùng và các dữ liệu pháp luật mới nhất để cải thiện độ chính xác và chất lượng của các câu trả lời.",
+        "Có, hệ thống được thiết kế để học hỏi liên tục và cập nhật với những quy định pháp luật mới nhất, những thực hành tốt ưu mới của pháp luật Việt Nam.",
     },
     {
       id: 2,
-      question: "Chatbot AI Luật có tốt như luật sư con người không?",
+      question: "Chatbot có thể thay thế luật sư chuyên nghiệp không?",
       answer:
-        "AI Luật được thiết kế để hỗ trợ người dùng tra cứu thông tin pháp luật một cách nhanh chóng. Tuy nhiên, đối với những vấn đề pháp lý phức tạp, bạn nên tham khảo ý kiến của luật sư chuyên nghiệp.",
+        "Không. Chatbot được thiết kế để cung cấp thông tin pháp luật một cách nhanh chóng và cổ động hóa quá trình tra cứu. Đối với các vấn đề pháp lý phức tạp, bạn còn cần tư vấn luật sư con người.",
     },
     {
       id: 3,
-      question: "AI có thể kiến Luật sư thất nghiệp?",
+      question:
+        "Thông tin từ hệ thống có phù hợp với pháp luật hiện hành không?",
       answer:
-        "AI Luật được thiết kế để hỗ trợ và tự động hoá quá trình tra cứu pháp luật. Tuy nhiên, luật sư con người vẫn đóng vai trò quan trọng trong việc cung cấp tư vấn pháp lý chuyên sâu và xử lý các trường hợp phức tạp.",
+        "Có. Hệ thống được xây dựa trên các văn bản pháp luật có hiệu lực pháp lý của Nhà nước Việt Nam. Tuy nhiên, do pháp luật luôn thay đổi, bạn nên đối chứng với các chuyên gia khi có câu hỏi quan trọng.",
     },
     {
       id: 4,
-      question: "Lợi ích của việc sử dụng Chabot AI Luật là gì?",
+      question: "Lợi ích của việc sử dụng chatbot là gì?",
       answer:
-        "Những lợi ích chính bao gồm: tiết kiệm thời gian trong tra cứu pháp luật, giảm chi phí vận hành, truy cập 24/7, xử lý nhiều yêu cầu cùng một lúc, và cải thiện độ chính xác thông tin.",
+        "Những lợi ích chính bao gồm: tra cứu thông tin pháp luật nhanh chóng, không cần thường xuyên tư vấn luật sư (giảm chi phí), truy cập 24/7, xử lý nhiều yêu cầu cùng lúc, và giấp cấp đối với khó khăn.",
     },
     {
       id: 5,
-      question: "Những hạn chế của AI Luật là gì?",
+      question: "Có những hạn chế nào cần lưu ý không?",
       answer:
-        "Những hạn chế bao gồm: AI vẫn cần sự giám sát của con người, không thể xử lý tất cả các trường hợp phức tạp, và cần được cập nhật liên tục với những luật mới.",
+        "Có. AI vẫn cần sự giám sát của con người, không thể xử lý hết tất cả các trường hợp phức tạp, và cần được cập nhật khi có các luật mới. Quá trình tư vấn với chuyên gia vẫn rất quan trọng.",
     },
     {
       id: 6,
-      question: "AI Luật có hỗ trợ ngôn ngữ Anh không?",
+      question: "Có những ngôn ngữ nào được hỗ trợ?",
       answer:
-        "Hiện tại, AI Luật chủ yếu hỗ trợ ngôn ngữ Tiếng Việt. Chúng tôi đang phát triển các tính năng hỗ trợ ngôn ngữ khác trong tương lai.",
+        "Hiện tại, hệ thống chủ yếu hỗ trợ Tiếng Việt. Chúng tôi sẽ tiếp tục phát triển để hỗ trợ thêm các ngôn ngữ khác trong tương lai, giúp phục vụ không nhân dân rộng hơn.",
     },
   ];
 
@@ -90,7 +91,7 @@ const FAQSection: React.FC = () => {
         {/* Tiêu đề */}
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-gray-900">
-            Câu hỏi liên quan
+            Câu hỏi thường gặp
           </h2>
         </div>
 

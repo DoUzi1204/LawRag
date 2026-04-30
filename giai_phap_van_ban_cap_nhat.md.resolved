@@ -1,0 +1,131 @@
+# Giải pháp: Xử lý văn bản pháp luật cập nhật, sửa đổi, bổ sung
+
+## 1. Bối cảnh vấn đề
+
+Trong hệ thống pháp luật Việt Nam, một văn bản có thể trải qua nhiều lần sửa đổi:
+
+```
+Luật Đất đai 2013 (45/2013/QH13)
+  └── Sửa đổi bởi: Luật 35/2018/QH14  (sửa một số điều)
+  └── Thay thế bởi: Luật Đất đai 2024 (31/2024/QH15) ← Hiện hành
+```
+
+**Vấn đề**: Khi user hỏi *"Quy định về quyền sử dụng đất?"*, hệ thống RAG có thể retrieve cả 3 phiên bản → trả lời dựa trên luật cũ đã hết hiệu lực.
+
+---
+
+## 2. Giải pháp đề xuất — 4 tầng bảo vệ
+
+### Tầng 1: Metadata — Đánh dấu trạng thái văn bản khi nhập liệu
+
+Mỗi văn bản (document) khi đưa vào cơ sở dữ liệu cần có các trường metadata:
+
+| Trường | Mô tả | Ví dụ |
+|--------|--------|-------|
+| `status` | Trạng thái hiệu lực | `"còn hiệu lực"`, `"hết hiệu lực"`, `"sửa đổi một phần"` |
+| `effective_date` | Ngày có hiệu lực | `2024-08-01` |
+| `expiry_date` | Ngày hết hiệu lực (nếu có) | `null` hoặc `2024-07-31` |
+| `replaced_by` | Văn bản thay thế | `"31/2024/QH15"` |
+| `amends` | Văn bản mà nó sửa đổi | `"45/2013/QH13"` |
+| `amended_by` | Danh sách VB đã sửa đổi nó | `["35/2018/QH14"]` |
+
+> [!IMPORTANT]
+> Đây là tầng quan trọng nhất. Nếu metadata đầy đủ, các tầng sau hoạt động hiệu quả hơn rất nhiều.
+
+**Nguồn dữ liệu metadata**: Cổng thông tin pháp luật quốc gia (vbpl.vn) cung cấp đầy đủ thông tin về trạng thái hiệu lực, văn bản liên quan.
+
+---
+
+### Tầng 2: Retrieval — Ưu tiên văn bản mới khi tìm kiếm
+
+Sau khi retrieve được danh sách documents từ Qdrant, áp dụng cơ chế **ưu tiên theo thời gian**:
+
+#### Cách 2a: Lọc cứng (Pre-filter)
+- Khi retrieve từ Qdrant, thêm filter metadata: chỉ lấy văn bản có `status = "còn hiệu lực"`.
+- **Ưu điểm**: Nhanh, đơn giản, loại bỏ hoàn toàn văn bản cũ.
+- **Nhược điểm**: Mất context lịch sử nếu user hỏi về luật cũ.
+
+#### Cách 2b: Boost điểm (Soft ranking)
+- Vẫn retrieve tất cả, nhưng **tăng điểm** cho văn bản mới hơn:
+  ```
+  final_score = similarity_score × recency_boost
+  
+  Trong đó recency_boost:
+    - Còn hiệu lực    → × 1.5
+    - Sửa đổi một phần → × 1.2
+    - Hết hiệu lực    → × 0.5
+  ```
+- **Ưu điểm**: Vẫn giữ văn bản cũ nhưng ưu tiên văn bản mới.
+
+#### Cách 2c: Kết hợp cả hai
+- Mặc định dùng Pre-filter (chỉ lấy văn bản hiện hành).
+- Nếu user hỏi rõ ràng về luật cũ (VD: *"Luật Đất đai 2013 quy định gì?"*) → Router node phát hiện và tắt filter.
+
+---
+
+### Tầng 3: Grading — Đánh giá độ liên quan có xét thời gian
+
+Trong node `grade_documents` của Agentic RAG pipeline, bổ sung thông tin metadata vào prompt grading:
+
+```
+Hiện tại, prompt grading chỉ hỏi: "Document này có liên quan đến câu hỏi không?"
+
+Cải tiến: Thêm metadata vào context cho LLM grading:
+  - "Document này có trạng thái: HẾT HIỆU LỰC, đã bị thay thế bởi VB số X"
+  - LLM sẽ tự đánh giá thấp hơn cho VB hết hiệu lực
+```
+
+Khi có 2 documents cùng chủ đề nhưng khác phiên bản, LLM grader có đủ thông tin để:
+- Giữ lại văn bản **còn hiệu lực**
+- Loại bỏ văn bản **đã hết hiệu lực** (trừ khi user hỏi cụ thể)
+
+---
+
+### Tầng 4: Generation — Prompt engineering cho câu trả lời
+
+Trong prompt generation, thêm hướng dẫn cho LLM:
+
+```
+Hướng dẫn bổ sung:
+- Nếu context chứa nhiều phiên bản của cùng một quy định, 
+  ƯU TIÊN trả lời dựa trên văn bản có hiệu lực mới nhất.
+- Nếu phát hiện văn bản đã hết hiệu lực trong context, 
+  CẢNH BÁO người dùng và chỉ ra văn bản thay thế.
+- Luôn ghi rõ số hiệu và ngày hiệu lực của văn bản được trích dẫn.
+```
+
+> [!TIP]
+> Đây là tầng phòng thủ cuối cùng — ngay cả khi các tầng trước lọt văn bản cũ, LLM vẫn có khả năng nhận biết và cảnh báo.
+
+---
+
+## 3. Tóm tắt kiến trúc
+
+```mermaid
+flowchart TD
+    A["Câu hỏi người dùng"] --> B["Tầng 2: Retrieval<br/>Filter/Boost theo status & ngày"]
+    B --> C["Tầng 3: Grading<br/>LLM đánh giá có xét metadata hiệu lực"]
+    C --> D["Tầng 4: Generation<br/>Prompt ưu tiên VB mới nhất + cảnh báo VB cũ"]
+    D --> E["Câu trả lời<br/>+ Trích dẫn nguồn có ghi rõ hiệu lực"]
+
+    DB["Tầng 1: Cơ sở dữ liệu<br/>Metadata đầy đủ:<br/>status, effective_date,<br/>replaced_by, amended_by"] --> B
+
+    style DB fill:#dbeafe,stroke:#2563eb
+    style A fill:#f0fdf4,stroke:#16a34a
+    style E fill:#f0fdf4,stroke:#16a34a
+```
+
+## 4. Đánh giá khả thi cho LawRAG hiện tại
+
+| Giải pháp | Độ khó | Hiệu quả | Ghi chú |
+|-----------|--------|-----------|---------|
+| Tầng 1: Metadata | ⭐⭐⭐ | Cao nhất | Cần cập nhật pipeline nhập liệu (preprocess) |
+| Tầng 2a: Pre-filter | ⭐ | Cao | Qdrant hỗ trợ filter metadata sẵn |
+| Tầng 2b: Boost điểm | ⭐⭐ | Trung bình | Cần custom reranker |
+| Tầng 3: Grading prompt | ⭐ | Trung bình | Chỉ cần sửa prompt, không đổi kiến trúc |
+| Tầng 4: Generation prompt | ⭐ | Thấp (phòng thủ) | Chỉ cần sửa prompt |
+
+> [!NOTE]
+> **Khuyến nghị triển khai theo thứ tự**: Tầng 4 → Tầng 3 → Tầng 1 → Tầng 2a
+> 
+> Bắt đầu từ thay đổi nhỏ nhất (prompt) để có kết quả ngay, sau đó dần bổ sung metadata và filter cho giải pháp bền vững.

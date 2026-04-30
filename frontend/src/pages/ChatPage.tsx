@@ -3,6 +3,7 @@ import { useNavigate, useParams, NavLink } from 'react-router-dom';
 import type { LawSource } from '../types/index';
 import type { SessionMessage } from '../types/session';
 import ReactMarkdown from 'react-markdown';
+import { Bot } from 'lucide-react';
 import { Sidebar } from '../components/layout/Sidebar';
 import { useSessions, type SessionError } from '../hooks/useSessions';
 import { getAuthHeader, API_BASE_URL } from '../services/api';
@@ -44,8 +45,8 @@ interface ChatApiResponse {
 // Typing indicator component
 const TypingIndicator: React.FC = () => (
   <div className="flex gap-4 justify-start">
-    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-medium shrink-0">
-      VX
+    <div className="w-8 h-8 rounded-xl bg-blue-600 flex items-center justify-center shrink-0">
+      <Bot className="w-4.5 h-4.5 text-white" />
     </div>
     <div className="flex items-center gap-1 px-4 py-3">
       <div className="flex gap-1">
@@ -206,12 +207,12 @@ export const ChatPage: React.FC = () => {
       if (!response.ok) {
         const errorType = response.status >= 500 ? 'server' : 'unknown';
         const errorMessage = response.status === 500
-          ? 'Server error. Please try again later.'
+          ? 'Lỗi máy chủ. Vui lòng thử lại sau.'
           : response.status === 503
-          ? 'Service temporarily unavailable. Please try again later.'
+          ? 'Dịch vụ tạm thời không khả dụng. Vui lòng thử lại sau.'
           : response.status === 401
-          ? 'Session expired. Please login again.'
-          : `An error occurred (code: ${response.status}). Please try again.`;
+          ? 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.'
+          : `Đã xảy ra lỗi (mã: ${response.status}). Vui lòng thử lại.`;
 
         setLastFailedMessage(messageText);
         setMessages(prev => [...prev, {
@@ -244,15 +245,15 @@ export const ChatPage: React.FC = () => {
         sources: flattenSources(data.sources || []),
       }]);
     } catch (error) {
-      let errorMessage = 'An unknown error occurred. Please try again.';
+      let errorMessage = 'Đã xảy ra lỗi không xác định. Vui lòng thử lại.';
       let errorType: 'network' | 'server' | 'unknown' = 'unknown';
 
       if (error instanceof Error) {
         if (error.name === 'AbortError') {
-          errorMessage = 'Request timed out. Please try again.';
+          errorMessage = 'Yêu cầu đã hết thời gian chờ. Vui lòng thử lại.';
           errorType = 'network';
         } else if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
-          errorMessage = 'Cannot connect to server. Please check your connection.';
+          errorMessage = 'Không thể kết nối tới máy chủ. Vui lòng kiểm tra kết nối của bạn.';
           errorType = 'network';
         }
       }
@@ -285,7 +286,7 @@ export const ChatPage: React.FC = () => {
   const handleNewConversation = useCallback(() => {
     setMessages([]);
     setSidebarOpen(false);
-    navigate('/');
+    navigate('/chat');
   }, [navigate]);
 
   // Select a session
@@ -294,7 +295,7 @@ export const ChatPage: React.FC = () => {
     if (sessionId) {
       navigate(`/chat/${sessionId}`);
     } else {
-      navigate('/');
+      navigate('/chat');
     }
   }, [navigate]);
 
@@ -361,19 +362,22 @@ export const ChatPage: React.FC = () => {
               </svg>
             </button>
             <div className="flex items-center gap-2">
-              <span className="bg-gray-900 text-white px-2 py-0.5 rounded text-sm font-bold">ViLeXa</span>
+              <div className="flex items-center justify-center w-7 h-7 bg-blue-600 rounded-lg">
+                <Bot className="w-4 h-4 text-white" />
+              </div>
+              <span className="text-blue-700 text-sm font-bold">Viet Law</span>
             </div>
           </div>
           <nav className="flex items-center gap-1">
             <NavLink
-              to="/"
+              to="/chat"
               className={({isActive}) =>
                 `px-3 py-1.5 text-sm rounded-lg transition-colors ${
                   isActive ? 'bg-gray-100 font-medium' : 'hover:bg-gray-50'
                 }`
               }
             >
-              Chat
+              Trò chuyện
             </NavLink>
             <NavLink
               to="/lookup"
@@ -383,7 +387,7 @@ export const ChatPage: React.FC = () => {
                 }`
               }
             >
-              Lookup
+              Tra cứu
             </NavLink>
           </nav>
         </div>
@@ -394,11 +398,8 @@ export const ChatPage: React.FC = () => {
             {/* Welcome message when no session selected and no messages */}
             {!activeSessionId && messages.length === 0 && !isLoadingMessages && (
               <div className="text-center py-12">
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xl font-bold mx-auto mb-4">
-                  VX
-                </div>
                 <h2 className="text-xl font-medium text-gray-900 mb-2">
-                  ViLeXa
+                  Viet Law
                 </h2>
                 <p className="text-gray-500 max-w-md mx-auto">
                   Trợ lý pháp luật Việt Nam. Hỏi tôi bất cứ điều gì về luật pháp Việt Nam.
@@ -411,7 +412,7 @@ export const ChatPage: React.FC = () => {
               <div className="flex justify-center py-8">
                 <div className="flex items-center gap-2 text-gray-500">
                   <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
-                  <span className="text-sm">Loading messages...</span>
+                  <span className="text-sm">Đang tải tin nhắn...</span>
                 </div>
               </div>
             )}
@@ -423,12 +424,12 @@ export const ChatPage: React.FC = () => {
                 className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-2 duration-200`}
               >
                 {msg.role === 'ai' && (
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-medium shrink-0 ${
+                  <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
                     msg.isError
                       ? 'bg-red-500'
-                      : 'bg-gradient-to-br from-blue-500 to-blue-600'
+                      : 'bg-blue-600'
                   }`}>
-                    {msg.isError ? '!' : 'VX'}
+                    {msg.isError ? <span className="text-white text-xs font-bold">!</span> : <Bot className="w-4.5 h-4.5 text-white" />}
                   </div>
                 )}
 
@@ -453,14 +454,14 @@ export const ChatPage: React.FC = () => {
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
                         <path fillRule="evenodd" d="M15.312 11.424a5.5 5.5 0 01-9.201 2.466l-.312-.311h2.433a.75.75 0 000-1.5H3.989a.75.75 0 00-.75.75v4.242a.75.75 0 001.5 0v-2.43l.31.31a7 7 0 0011.712-3.138.75.75 0 00-1.449-.39zm1.23-3.723a.75.75 0 00.219-.53V2.929a.75.75 0 00-1.5 0V5.36l-.31-.31A7 7 0 003.239 8.188a.75.75 0 101.448.389A5.5 5.5 0 0113.89 6.11l.311.31h-2.432a.75.75 0 000 1.5h4.243a.75.75 0 00.53-.219z" clipRule="evenodd" />
                       </svg>
-                      Retry
+                      Thử lại
                     </button>
                   )}
 
                   {/* Sources / Citations */}
                   {msg.sources && msg.sources.length > 0 && !msg.isError && (
                     <div className="mt-4 space-y-2 w-full">
-                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Sources</div>
+                      <div className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">Nguồn tham khảo</div>
                       <div className="grid grid-cols-1 gap-2">
                         {msg.sources.map((source, sIdx) => (
                           <div
@@ -475,7 +476,7 @@ export const ChatPage: React.FC = () => {
                                 </span>
                               )}
                               <span className="truncate">
-                                {source.document_title || source.article_title || 'Unknown Document'}
+                                {source.document_title || source.article_title || 'Văn bản không xác định'}
                               </span>
                             </div>
                             {source.document_type && (
@@ -514,7 +515,7 @@ export const ChatPage: React.FC = () => {
                 className="flex-1 bg-transparent border-none outline-none text-gray-700 placeholder-gray-400 disabled:cursor-not-allowed text-[15px]"
                 value={composer}
                 onChange={(e) => setComposer(e.target.value)}
-                placeholder={isLoading ? "Waiting for response..." : "Ask anything about Vietnamese law..."}
+                placeholder={isLoading ? "Đang chờ phản hồi..." : "Hỏi bất cứ điều gì về pháp luật Việt Nam..."}
                 disabled={isLoading}
               />
               <button
@@ -527,7 +528,7 @@ export const ChatPage: React.FC = () => {
                     ? 'bg-gray-900 text-white hover:bg-gray-800'
                     : 'bg-gray-200 text-gray-400 cursor-not-allowed'
                 }`}
-                title={isLoading ? 'Processing...' : composer.trim() ? 'Send message' : 'Type a message to send'}
+                title={isLoading ? 'Đang xử lý...' : composer.trim() ? 'Gửi tin nhắn' : 'Nhập tin nhắn để gửi'}
               >
                 {isLoading ? (
                   <LoadingSpinner />
@@ -540,9 +541,9 @@ export const ChatPage: React.FC = () => {
             </form>
             <div className="text-center text-xs text-gray-400 mt-2">
               {isLoading ? (
-                <span className="text-blue-500">AI is processing your request...</span>
+                <span className="text-blue-500">AI đang xử lý yêu cầu của bạn...</span>
               ) : (
-                'AI may make mistakes. Please verify important information.'
+                'AI có thể mắc sai sót. Vui lòng xác minh các thông tin quan trọng.'
               )}
             </div>
           </div>

@@ -13,30 +13,30 @@ const FeatureSection: React.FC = () => {
     {
       id: 1,
       icon: <MessageSquare className="w-12 h-12 text-blue-600" />,
-      title: "Hỏi đáp luật giao thông bằng AI",
+      title: "Hỏi đáp pháp luật Việt Nam bằng AI",
       description:
-        "Người dùng có thể đặt câu hỏi tự nhiên về luật giao thông đường bộ và nhận câu trả lời nhanh chóng từ chatbot AI.",
+        "Người dùng có thể đặt câu hỏi tự nhiên về các vấn đề pháp luật Việt Nam và nhận câu trả lời nhanh chóng từ chatbot AI.",
     },
     {
       id: 2,
       icon: <AlertCircle className="w-12 h-12 text-blue-600" />,
-      title: "Tra cứu lỗi vi phạm và mức phạt",
+      title: "Tra cứu quy định pháp luật",
       description:
-        "Hệ thống cung cấp thông tin chi tiết về các lỗi vi phạm giao thông và mức xử phạt tương ứng dựa trên các quy định pháp luật hiện hành.",
+        "Hệ thống cung cấp thông tin chi tiết về các quy định pháp luật Việt Nam, bao gồm các điều khoản, hình phạt và quy trình pháp lý.",
     },
     {
       id: 3,
       icon: <FileText className="w-12 h-12 text-blue-600" />,
       title: "Thông tin dựa trên văn bản pháp luật",
       description:
-        "Chatbot sử dụng dữ liệu từ các văn bản pháp luật về giao thông đường bộ để đảm bảo câu trả lời chính xác và đáng tin cậy.",
+        "Chatbot sử dụng dữ liệu từ các văn bản pháp luật chính thức của Việt Nam để đảm bảo câu trả lời chính xác, đáng tin cậy và cập nhật.",
     },
     {
       id: 4,
       icon: <Clock className="w-12 h-12 text-blue-600" />,
       title: "Trả lời nhanh chóng 24/7",
       description:
-        "Người dùng có thể tra cứu thông tin về luật giao thông bất cứ lúc nào mà không cần tìm kiếm thủ công trong các tài liệu pháp luật.",
+        "Người dùng có thể tra cứu thông tin pháp luật bất cứ lúc nào mà không cần tìm kiếm thủ công trong các tài liệu pháp luật phức tạp.",
     },
   ];
 
@@ -46,8 +46,8 @@ const FeatureSection: React.FC = () => {
         {/* Tiêu đề */}
         <div className="text-center mb-16">
           <h2 className="text-4xl font-bold text-gray-900 mb-4">
-            <span className="text-blue-600">Đô Đô Giao Thông</span> Có Thể Giúp
-            Gì Cho Bạn?
+            <span className="text-blue-600">Viet Law</span> Có Thể Giúp Gì Cho
+            Bạn?
           </h2>
         </div>
 
