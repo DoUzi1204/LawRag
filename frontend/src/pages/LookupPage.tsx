@@ -29,14 +29,30 @@ function extractToc(content: string): TocItem[] {
   ];
 
   let charPosition = 0;
-  lines.forEach((line) => {
+  lines.forEach((line, index) => {
     const trimmedLine = line.trim();
     for (const { regex, level } of patterns) {
       const match = trimmedLine.match(regex);
       if (match) {
+        let titleText = match[1];
+        if (match[2]) {
+          titleText += `: ${match[2].trim()}`;
+        } else if (level < 4) {
+          // Look ahead to the next non-empty line for the title
+          for (let i = index + 1; i < index + 4 && i < lines.length; i++) {
+            const nextLine = lines[i].trim();
+            if (nextLine) {
+              if (!/^(Điều|Mục|Chương|Phần)\s+/i.test(nextLine)) {
+                titleText += ` - ${nextLine}`;
+              }
+              break;
+            }
+          }
+        }
+
         items.push({
           id: `toc-${items.length}`,
-          title: match[2] ? `${match[1]}: ${match[2].trim()}` : match[1],
+          title: titleText,
           level,
           position: charPosition,
         });
@@ -521,7 +537,7 @@ export const LookupPage: React.FC = () => {
     }
   };
 
-  // Render content with TOC anchors and optional highlighting
+  // Render content with heuristic formatting and TOC anchors
   const renderContent = (content: string) => {
     // Patterns for Vietnamese legal document structure (same as extractToc)
     const tocPatterns = [
@@ -533,9 +549,13 @@ export const LookupPage: React.FC = () => {
 
     const lines = content.split('\n');
     let tocIndex = 0;
+    let inHeader = true;
+    let inPreamble = false;
     
     return lines.map((line, lineIndex) => {
       const trimmedLine = line.trim();
+      if (!trimmedLine) return <div key={lineIndex} className="h-2"></div>;
+
       let isTocItem = false;
       let currentTocId = '';
       
@@ -551,29 +571,80 @@ export const LookupPage: React.FC = () => {
       
       // Check if this line should be highlighted
       const shouldHighlight = highlightArticle && 
-        new RegExp(`${highlightArticle}[.:]?`, 'i').test(line);
+        new RegExp(`^${highlightArticle}[.:]?`, 'i').test(trimmedLine);
       
-      if (isTocItem) {
-        return (
-          <span key={lineIndex}>
-            <span id={currentTocId} className={`scroll-mt-24 ${shouldHighlight ? 'bg-yellow-200 px-1 rounded' : ''}`}>
-              {line}
-            </span>
-            {'\n'}
-          </span>
-        );
+      // Heuristic Formatting for Vietnamese Legal Documents
+      let className = "mb-2 text-justify"; // default paragraph
+
+      const hasLetters = /[\p{L}]/u.test(trimmedLine);
+      const isAllCaps = hasLetters && trimmedLine === trimmedLine.toUpperCase();
+      
+      // Update states
+      if (/^Căn cứ/i.test(trimmedLine) || /^Theo đề nghị/i.test(trimmedLine)) {
+        inHeader = false;
+        inPreamble = true;
       }
-      
-      if (shouldHighlight) {
-        return (
-          <span key={lineIndex}>
-            <mark className="bg-yellow-200 px-1 rounded">{line}</mark>
-            {'\n'}
-          </span>
-        );
+      if (/^(Điều\s+|CHƯƠNG\s+|PHẦN\s+|MỤC\s+)/i.test(trimmedLine)) {
+        inHeader = false;
+        inPreamble = false;
       }
+
+      // 1. Check for Chương, Phần, Mục regardless of capitalization
+      if (/^(CHƯƠNG|PHẦN)\s+[IVXLCDM\d]+/i.test(trimmedLine)) {
+        className = "text-center font-bold text-lg mt-8 mb-1 text-slate-900";
+      } else if (/^(MỤC)\s+\d+/i.test(trimmedLine)) {
+        className = "text-center font-bold text-base mt-6 mb-1 text-slate-900";
+      }
+      // 2. Exact string matches (like Quốc hiệu, Tiêu ngữ)
+      else if (trimmedLine.toUpperCase().includes('CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM') || trimmedLine.toUpperCase().includes('ĐỘC LẬP - TỰ DO - HẠNH PHÚC')) {
+        className = "text-center font-bold mb-1";
+      }
+      // 3. All Caps Lines
+      else if (isAllCaps) {
+        if (/^(LUẬT|BỘ LUẬT|NGHỊ ĐỊNH|THÔNG TƯ|QUYẾT ĐỊNH|CHỈ THỊ|PHÁP LỆNH|HIẾN PHÁP|NGHỊ QUYẾT)/.test(trimmedLine)) {
+          className = "text-center font-bold text-xl mt-8 mb-2 text-blue-900";
+        } else if (trimmedLine.length < 250) {
+          // Other all-caps titles (often the title of Chương or Mục)
+          className = "text-center font-bold mb-6 text-slate-800";
+        } else {
+          // Fallback for very long all-caps blocks
+          className = "text-center font-bold mb-4";
+        }
+      } 
+      // 4. Document Title in Header (mixed case)
+      else if (inHeader && !/^Số:/i.test(trimmedLine) && !/^(Hà Nội|TP|Thành phố|Ngày|Tháng|Năm)/i.test(trimmedLine)) {
+        className = "text-center font-bold mb-1 text-lg text-slate-800";
+      }
+      // 5. Mixed case lines
+      else {
+        // Article titles (Điều X.)
+        if (/^(Điều\s+\d+[a-z]?)[.:]\s*(.*)/i.test(trimmedLine)) {
+          className = "font-bold mt-6 mb-2 text-justify text-slate-800";
+        }
+        // Preamble lines
+        else if (inPreamble) {
+          className = "italic mb-2 text-justify text-slate-600";
+        }
+        // Clauses and Points (1. / a) / đ))
+        else if (/^(\d+\.|[a-zđ]\))/.test(trimmedLine)) {
+          className = "mb-2 text-justify";
+        } 
+        // Sub-points like - or +
+        else if (/^[-+]/.test(trimmedLine)) {
+          className = "ml-4 mb-2 text-justify";
+        }
+      }
+
+      // Combine with highlight class
+      const highlightClass = shouldHighlight ? "bg-yellow-200 px-2 rounded ring-4 ring-yellow-200 transition-colors duration-500" : "";
       
-      return lineIndex < lines.length - 1 ? line + '\n' : line;
+      return (
+        <div key={lineIndex} className={`${className} ${highlightClass}`}>
+          <span id={isTocItem ? currentTocId : undefined} className={isTocItem ? "scroll-mt-24" : ""}>
+            {trimmedLine}
+          </span>
+        </div>
+      );
     });
   };
 
@@ -896,11 +967,11 @@ export const LookupPage: React.FC = () => {
                     <button
                       key={item.id}
                       onClick={() => scrollToTocItem(item)}
-                      className={`w-full text-left text-sm py-1.5 px-2 rounded transition-colors hover:bg-slate-200 text-slate-600 hover:text-slate-900 ${
-                        item.level === 1 ? 'font-semibold' :
-                        item.level === 2 ? 'pl-4' :
-                        item.level === 3 ? 'pl-6 text-xs' :
-                        'pl-8 text-xs'
+                      className={`w-full text-left text-sm py-1.5 px-2 rounded transition-colors hover:bg-slate-200 hover:text-slate-900 ${
+                        item.level === 1 ? 'font-bold text-slate-800 text-base' :
+                        item.level === 2 ? 'font-bold text-slate-800 pl-4' :
+                        item.level === 3 ? 'font-semibold text-slate-700 pl-6 text-xs' :
+                        'text-slate-600 pl-8 text-xs'
                       }`}
                     >
                       {item.title}

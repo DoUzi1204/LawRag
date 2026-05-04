@@ -243,21 +243,9 @@ export function Sidebar({
  */
 function groupSessionsByDate(sessions: ChatSession[]): Record<string, ChatSession[]> {
   const groups: Record<string, ChatSession[]> = {};
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
 
   for (const session of sessions) {
-    const sessionDate = new Date(session.updated_at);
-    const sessionDay = new Date(sessionDate.getFullYear(), sessionDate.getMonth(), sessionDate.getDate());
-
-    let group: string;
-    if (sessionDay >= weekAgo) {
-      group = 'Gần đây';
-    } else {
-      group = 'Cũ hơn';
-    }
+    const group = 'Cũ hơn';
 
     if (!groups[group]) {
       groups[group] = [];
